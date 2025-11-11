@@ -1,72 +1,146 @@
 // 1. Importar o módulo Express
-const express = require('express');
-const cors = require('cors');
+const express = require("express");
+const cors = require("cors");
+const Database = require("better-sqlite3");
+const path = require("path");
+
+// Arquivo do banco de dados
+const DB_FILE = path.join(__dirname, "monstros.db");
+
+// Conexão com banco de dados
+const db = new Database(DB_FILE);
+
+// // --- Dados Temporários em Memória ---
+// const monstros = require("./monstros.json");
 
 // 2. Criar uma instância do aplicativo Express
 const app = express();
-app.use(cors({ origin: '*' }));
+app.use(cors({ origin: "*" }));
+app.use(express.json());
 
 // 3. Definir a porta em que o servidor irá escutar
 // Usamos process.env.PORT para compatibilidade com ambientes de hospedagem (como Heroku)
 // ou a porta 3000 como padrão se a variável de ambiente não estiver definida.
 const PORT = process.env.PORT || 3000;
 
-// --- Dados Temporários em Memória ---
-// Agora os monstros são carregados de um arquivo JSON externo.
-const monstros = require('./monstros.json');
+// Faz o aplicativo Express começar a "escutar" por requisições na porta definida.
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`Acesse: http://localhost:${PORT}/monstros`);
+});
 
 // --- Rotas da API ---
-
 // Rota GET para listar todos os monstros
 // Quando alguém fizer uma requisição GET para a URL base + '/monstros'
 // (ex: http://localhost:3000/monstros), esta função será executada.
+app.get("/monstros", (req, res) => {
+  const tipoCriatura = req.query.tipo_criatura;
+  const pontosVidaMin = req.query.pontos_vida_min;
+  const pontosVidaMax = req.query.pontos_vida_max;
+  const buscaTexto = req.query.q;
 
-// anakin
-app.get('/monstros', (req, res) => {
-    const tipoCriatura = req.query.tipo_criatura;
-    const pontosVidaMin = req.query.pontos_vida_min;
-    const pontosVidaMax = req.query.pontos_vida_max;
-    const buscaTexto = req.query.q;
+  let resultado = getAllMonstros();
 
-    let resultado = monstros;
+  if (tipoCriatura) {
+    resultado = resultado.filter((m) => m.tipo_criatura == tipoCriatura);
+  }
+  if (pontosVidaMin) {
+    resultado = resultado.filter((m) => m.pontos_vida >= Number(pontosVidaMin));
+  }
+  if (pontosVidaMax) {
+    resultado = resultado.filter((m) => m.pontos_vida <= Number(pontosVidaMax));
+  }
+  if (buscaTexto) {
+    const texto = buscaTexto.toLowerCase();
+    resultado = resultado.filter(
+      (m) =>
+        (m.nome && m.nome.toLowerCase().includes(texto)) ||
+        (m.descricao && m.descricao.toLowerCase().includes(texto))
+    );
+  }
 
-    if (tipoCriatura) {
-        resultado = resultado.filter(m => m.tipo_criatura = tipoCriatura);
-    }
-    else if (pontosVidaMin) {
-        resultado = resultado.filter(m => m.pontos_vida > Number(pontosVidaMin));
-    }
-    else if (pontosVidaMax) {
-        resultado = resultado.filter(m => m.pontos_vida < Number(pontosVidaMax));
-    }
-    else {
-        const texto = buscaTexto;
-        resultado = resultado.filter (m =>
-            (m.nome && m.nome.toLowerCase() .includes(texto)) ||
-            (m.descricao && m.descricao.toLowerCase() .includes(texto))
-        );
-    }
-    res.json(resultado);
+  res.json(resultado);
 });
 
-
-//GRUPO SCP
-
-
-app.get('/monstros/random', (req, res) => {
-    const index = Math.floor(Math.random()* monstros.length);
+// Rota GET para retornar um monstro aleatório
+app.get("/monstros/random", (req, res) => {
+  monstros = getAllMonstros();
+  if (monstros.length > 0) {
+    const index = Math.floor(Math.random() * monstros.length);
     res.json(monstros[index]);
-if (monstros.length > 0) {
-    res.status(404).json({erro: 'Nenhum monstro encontrado'});
-} else{
-       
+  } else {
+    res.status(404).json({ erro: "Nenhum monstro encontrado." });
+  }
+});
+
+app.get("/monstros/:monstros_id", (req, res) => {
+  const id = Number(req.params.monstros_id);
+  const monstro = getMonstrosById(id);
+
+  if (monstro) {
+    res.json(monstro);
+  } else {
+    res.status(400).json({ erro: "Nenhum moonstro foi encontrado :(" });
+  }
+});
+
+//  Rota para criar um monstro
+
+app.post("/monstros", (req, res) => {
+  const corpo = req.body;
+  const novo_monstro = insertMonstro(corpo);
+  return res.status(201).json(novo_monstro);
+});
+
+// // Criando uma nova rota que recebe um ID pela URL. `:monstro_id`
+// app.get("/monstros/:monstro_id", (req, res) => {
+//   // Descubra como pegar o ID passado pela URL através do atributo req.params
+//   let id = req.params.monstro_id;
+//   // Pesquise sobre o método find em javascript e filtre o monstro por ID.
+//   // Vale 15 pts
+//   let monstro = monstros.find((m) => m.id == id);
+
+//   if (monstro) {
+//     res.json(monstro);
+//   } else {
+//     res.status(404).json({ erro: "Nenhum monstro encontrado." });
+//   }
+// });
+
+// Funções de banco de dados
+function getAllMonstros() {
+  const resultado = db.prepare("SELECT * FROM monstros");
+  return resultado.all();
 }
-});
 
-// --- Iniciar o Servidor ---
+function getMonstrosById(id) {
+  const resultado = db.prepare("SELECT * FROM monstros WHERE id= ?");
+  return resultado.get(id);
+}
 
-// Faz o aplicativo Express começar a "escutar" por requisições na porta definida.
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
-    console.log(`Acesse: http://localhost:${PORT}/monstros`);
-});
+function insertMonstro(monstro) {
+  const resultado = db.prepare(`
+        INSERT INTO monstros (
+            nome,
+            imagem,
+            descricao,
+            tipo_criatura,
+            pontos_vida,
+            ataque,
+            defesa,
+            habitat
+        )
+            VALUES (@nome, @imagem, @descricao, @tipo_criatura, @pontos_vida, @ataque, @defesa, @habitat)
+        `)
+  const novo = resultado.run({
+    nome: monstro.nome,
+    imagem: monstro.imagem,
+    descricao: monstro.descricao,
+    tipo_criatura: monstro.tipo_criatura,
+    pontos_vida: monstro.pontos_vida,
+    ataque: monstro.ataque,
+    defesa: monstro.defesa,
+    habitat: monstro.habitat,
+  });
+  return getMonstrosById(novo.lastInsertRowId);
+}
